@@ -120,6 +120,10 @@ npm run dev
 }
 ```
 
+## 演示
+
+<video src="demo/demo.mp4" controls width="100%"></video>
+
 ## 截图
 
 ![主界面](screenshots/chat.png)
