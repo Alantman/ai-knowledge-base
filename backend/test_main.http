@@ -1,0 +1,25 @@
+### 根路径
+GET http://127.0.0.1:8000/
+
+### 上传 txt 文件
+POST http://127.0.0.1:8000/api/kb/upload
+Content-Type: multipart/form-data; boundary=boundary
+
+--boundary
+Content-Disposition: form-data; name="file"; filename="知识库.txt"
+Content-Type: text/plain
+
+< 这里放你的 txt 文件内容 >
+--boundary--
+
+### 列出已上传文档
+GET http://127.0.0.1:8000/api/kb/documents
+
+### 提问（流式）
+POST http://127.0.0.1:8000/api/kb/chat
+Content-Type: application/json
+
+{
+  "question": "这个系统用了什么技术栈？",
+  "session_id": "user1"
+}
