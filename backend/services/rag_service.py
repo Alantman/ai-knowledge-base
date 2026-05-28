@@ -214,6 +214,81 @@ def ask_agent_reasoning_stream(question: str, session_id: str = "default"):
 
 
 # ============================================================
+# Agent（LangGraph）：用图结构替代手动 while 循环
+# ============================================================
+
+from langgraph.graph import StateGraph, MessagesState, END
+from langgraph.prebuilt import ToolNode, tools_condition
+from langchain_core.messages import AIMessageChunk
+
+# 用 MessagesState 管理消息列表 — LangGraph 自动帮你追加消息到 state["messages"]
+# 等价于你之前手动做的 messages.append() ... 然后传给下一轮
+
+# ToolNode 等价于你之前手动写的：
+#   for tc in ai_msg.tool_calls:
+#       result = search_knowledge_base.invoke(tc["args"])
+#       messages.append(ToolMessage(content=result, tool_call_id=tc["id"]))
+
+# tools_condition 等价于你之前手动写的：
+#   if ai_msg.tool_calls: → 走工具 / else: → END
+
+
+def _build_langgraph_agent():
+    """构建 LangGraph Agent，用图替代 while 循环"""
+
+    def call_model(state: MessagesState):
+        """agent 节点：调用 LLM。state["messages"] 是历史消息列表"""
+        response = model_with_tools.invoke(state["messages"])
+        # LangGraph 的 MessagesState 会用 {messages: [...]} 接收返回值，
+        # 自动把 AIMessage 追加到消息列表里
+        return {"messages": response}
+
+    # 两个节点：agent（调 LLM） + tools（执行工具）
+    graph = StateGraph(MessagesState)
+    graph.add_node("agent", call_model)
+    graph.add_node("tools", ToolNode([search_knowledge_base]))
+
+    # 边：
+    #   START → agent → (conditional) → tools → agent → ... → END
+    graph.set_entry_point("agent")
+    graph.add_conditional_edges("agent", tools_condition)
+    graph.add_edge("tools", "agent")
+
+    return graph.compile()
+
+
+langgraph_agent = _build_langgraph_agent()
+
+
+def ask_agent_langgraph_stream(question: str, session_id: str = "default"):
+    """LangGraph Agent 流式推理：图结构自动管理循环和状态，不需要手动 while
+
+    stream_mode="messages" 让 LangGraph 产出 token 级流式事件。
+    每个事件是 (message_chunk, metadata) 的元组。
+    """
+    history_messages = _get_agent_history(session_id)
+
+    full_answer = ""
+    for chunk, metadata in langgraph_agent.stream(
+        {"messages": history_messages + [HumanMessage(content=question)]},
+        config={"recursion_limit": 5},
+        stream_mode="messages",
+    ):
+        # chunk 是 AIMessageChunk — 和手动流式一样的逐 token 输出
+        # 过滤掉 ToolMessage 和没有内容的 chunk
+        if isinstance(chunk, AIMessageChunk) and chunk.content:
+            full_answer += chunk.content
+            yield chunk.content
+
+        # 如果是 tool_calls chunk（工具调用阶段的流式片段），静默跳过
+        # 工具执行发生在 tools 节点，不是流式输出
+
+    session_hist = get_session_history(session_id)
+    session_hist.add_message(HumanMessage(content=question))
+    session_hist.add_message(AIMessage(content=full_answer))
+
+
+# ============================================================
 # 临时文件分析：文件内容直接放入 prompt，不走 RAG
 # ============================================================
 

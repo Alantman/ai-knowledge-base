@@ -67,6 +67,7 @@
           <option value="rag">RAG 模式</option>
           <option value="agent">Agent 模式</option>
           <option value="reasoning">Agent 推理</option>
+          <option value="langgraph">LangGraph Agent</option>
         </select>
         <span class="mode-hint">{{ modeLabelText() }}</span>
         <button class="clear-btn" @click="newSession" v-if="messages.length > 0">新建对话</button>
@@ -145,12 +146,14 @@ const ENDPOINTS = {
   rag: '/api/kb/chat',
   agent: '/api/kb/chat/agent',
   reasoning: '/api/kb/chat/agent/reasoning',
+  langgraph: '/api/kb/chat/agent/langgraph',
 }
 
 const MODE_LABELS = {
   rag: '固定检索 → 回答',
   agent: '模型自主决定是否检索（单轮）',
   reasoning: '多轮推理，可连续检索多次',
+  langgraph: 'LangGraph 图结构 Agent',
 }
 
 // ============================================================

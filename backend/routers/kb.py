@@ -4,7 +4,7 @@ from fastapi import APIRouter, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from schemas.kb import ChatRequest
 from services.doc_service import ingest_file, _extract_text_from_pdf, delete_document
-from services.rag_service import ask_stream, ask_agent_stream, ask_agent_reasoning_stream, ask_with_file_stream
+from services.rag_service import ask_stream, ask_agent_stream, ask_agent_reasoning_stream, ask_agent_langgraph_stream, ask_with_file_stream
 from utils.response import success_response, error_response
 
 router = APIRouter(prefix="/api/kb", tags=["知识库问答"])
@@ -101,6 +101,23 @@ async def chat_agent_reasoning(req: ChatRequest):
     async def generate():
         try:
             for chunk in ask_agent_reasoning_stream(req.question, req.session_id):
+                yield chunk
+                await asyncio.sleep(0.08)
+        except Exception as e:
+            yield f"\n[错误：{str(e)}]"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/plain; charset=utf-8",
+    )
+
+
+@router.post("/chat/agent/langgraph")
+async def chat_agent_langgraph(req: ChatRequest):
+    """流式问答，LangGraph Agent：用图结构替代手动 while 循环"""
+    async def generate():
+        try:
+            for chunk in ask_agent_langgraph_stream(req.question, req.session_id):
                 yield chunk
                 await asyncio.sleep(0.08)
         except Exception as e:
