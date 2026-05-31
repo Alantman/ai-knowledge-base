@@ -17,11 +17,6 @@
 | **Agent 推理** | 多步推理循环，模型可连续调用多次工具直到找到答案 | `@tool` + `bind_tools` + 手写 while 循环 |
 | **LangGraph Agent** | 图结构替代手写 while，框架自动管理循环和状态 | StateGraph + ToolNode + tools_condition |
 
-### 对话中文件分析
-- 📎 附加文件，选择「临时分析」— 文件内容直接注入 prompt，不入库
-- 或选择「入库检索」— 上传 → 入向量库 → RAG 检索 → 回答
-- 两种方式的选型体现了「短文档直接放 context，长文档走 RAG」的设计判断
-
 ### 多会话管理
 - 对话列表持久化，支持新建 / 切换 / 删除会话
 - 每个会话独立 session_id，后端记忆互不干扰
@@ -111,8 +106,6 @@ npm run dev
 | POST | `/api/kb/chat/agent` | Agent 单轮 Tool Calling 流式问答 |
 | POST | `/api/kb/chat/agent/reasoning` | Agent 多轮推理流式问答 |
 | POST | `/api/kb/chat/agent/langgraph` | LangGraph Agent 流式问答（图结构替代手动 while） |
-| POST | `/api/kb/chat/with-file` | 临时文件分析（不入库） |
-
 ### 请求示例
 
 ```json

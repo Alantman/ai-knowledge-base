@@ -1,10 +1,10 @@
 import os
 import asyncio
-from fastapi import APIRouter, UploadFile, File, Form
+from fastapi import APIRouter, UploadFile, File
 from fastapi.responses import StreamingResponse
 from schemas.kb import ChatRequest
-from services.doc_service import ingest_file, _extract_text_from_pdf, delete_document
-from services.rag_service import ask_stream, ask_agent_stream, ask_agent_reasoning_stream, ask_agent_langgraph_stream, ask_with_file_stream
+from services.doc_service import ingest_file, delete_document
+from services.rag_service import ask_stream, ask_agent_stream, ask_agent_reasoning_stream, ask_agent_langgraph_stream
 from utils.response import success_response, error_response
 
 router = APIRouter(prefix="/api/kb", tags=["知识库问答"])
@@ -118,49 +118,6 @@ async def chat_agent_langgraph(req: ChatRequest):
     async def generate():
         try:
             for chunk in ask_agent_langgraph_stream(req.question, req.session_id):
-                yield chunk
-                await asyncio.sleep(0.08)
-        except Exception as e:
-            yield f"\n[错误：{str(e)}]"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/plain; charset=utf-8",
-    )
-
-
-@router.post("/chat/with-file")
-async def chat_with_file(
-    file: UploadFile = File(...),
-    question: str = Form(...),
-    session_id: str = Form(default="default"),
-):
-    """临时文件分析：上传文件 → 提取文字 → 拼入 prompt → 流式回复（不入库）"""
-    if not file.filename.endswith((".txt", ".pdf")):
-        return error_response("仅支持 .txt 和 .pdf 文件")
-
-    os.makedirs(UPLOADS_DIR, exist_ok=True)
-    tmp_path = os.path.join(UPLOADS_DIR, f"_tmp_{file.filename}")
-
-    content = await file.read()
-    with open(tmp_path, "wb") as f:
-        f.write(content)
-
-    ext = os.path.splitext(file.filename)[1].lower()
-    if ext == ".pdf":
-        text = _extract_text_from_pdf(tmp_path)
-    else:
-        with open(tmp_path, "r", encoding="utf-8") as f:
-            text = f.read()
-
-    os.remove(tmp_path)
-
-    if not text.strip():
-        return error_response("文件中未提取到文字，可能是扫描件 PDF")
-
-    async def generate():
-        try:
-            for chunk in ask_with_file_stream(text, question, session_id):
                 yield chunk
                 await asyncio.sleep(0.08)
         except Exception as e:

@@ -94,31 +94,8 @@
       </div>
 
       <div class="input-area">
-        <input
-          ref="chatFileInput"
-          type="file"
-          accept=".txt,.pdf"
-          style="display:none"
-          @change="handleFileAttach"
-        />
-
         <div class="input-wrapper">
-          <div v-if="attachedFile" class="attached-file-bar">
-            <span class="file-tag">📄 {{ attachedFile.name }}</span>
-            <select v-model="fileMode" class="file-mode-select">
-              <option value="temp">临时分析</option>
-              <option value="store">入库检索</option>
-            </select>
-            <button class="file-remove-btn" @click="removeAttachedFile()">&#10005;</button>
-          </div>
-
           <div class="input-row">
-            <button
-              class="attach-btn"
-              @click="chatFileInput.click()"
-              :disabled="loading"
-              title="附加文件"
-            >&#128206;</button>
             <input
               v-model="question"
               class="chat-input"
@@ -242,22 +219,6 @@ const handleUpload = async (e) => {
 }
 
 // ============================================================
-// 文件附加
-// ============================================================
-const chatFileInput = ref(null)
-const attachedFile = ref(null)
-const fileMode = ref('temp')
-
-function handleFileAttach(e) {
-  attachedFile.value = e.target.files[0]
-  e.target.value = ''
-}
-
-function removeAttachedFile() {
-  attachedFile.value = null
-}
-
-// ============================================================
 // 对话
 // ============================================================
 const mode = ref('rag')
@@ -350,62 +311,22 @@ const send = async () => {
   errorMsg.value = ''
   question.value = ''
 
-  const userLabel = attachedFile.value
-    ? `用户 [+ ${attachedFile.value.name}]`
-    : '用户'
-  messages.value.push({ role: 'user', label: userLabel, content: q })
+  messages.value.push({ role: 'user', label: '用户', content: q })
   await scrollToBottom()
 
   loading.value = true
-  const file = attachedFile.value
-  attachedFile.value = null
 
   messages.value.push({ role: 'ai', label: modeLabelText(), content: '', streaming: true })
   const aiMsg = messages.value[messages.value.length - 1]
   await scrollToBottom()
 
   try {
-    if (file && fileMode.value === 'temp') {
-      aiMsg.label = '临时分析'
-      const formData = new FormData()
-      formData.append('file', file)
-      formData.append('question', q)
-      formData.append('session_id', sessionId.value)
-      const response = await fetch(`${API_BASE}/api/kb/chat/with-file`, {
-        method: 'POST',
-        body: formData,
-      })
-      await readStream(response, aiMsg)
-    } else if (file && fileMode.value === 'store') {
-      aiMsg.content = '上传文档中...'
-      await scrollToBottom()
-
-      const uploadForm = new FormData()
-      uploadForm.append('file', file)
-      const uploadRes = await axios.post(`${API_BASE}/api/kb/upload`, uploadForm)
-      if (uploadRes.data.code !== 200) {
-        throw new Error(uploadRes.data.message || '上传失败')
-      }
-
-      aiMsg.content = '检索中...'
-      await scrollToBottom()
-
-      const response = await fetch(`${API_BASE}${ENDPOINTS[mode.value]}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, session_id: sessionId.value }),
-      })
-      aiMsg.content = ''
-      await readStream(response, aiMsg)
-      loadDocs()
-    } else {
-      const response = await fetch(`${API_BASE}${ENDPOINTS[mode.value]}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: q, session_id: sessionId.value }),
-      })
-      await readStream(response, aiMsg)
-    }
+    const response = await fetch(`${API_BASE}${ENDPOINTS[mode.value]}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ question: q, session_id: sessionId.value }),
+    })
+    await readStream(response, aiMsg)
   } catch (err) {
     errorMsg.value = err.message || '请求失败，请检查后端服务是否正常运行'
     messages.value.pop()
@@ -793,77 +714,9 @@ onMounted(() => {
   gap: 8px;
 }
 
-.attached-file-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: #f0f4ff;
-  border: 1px solid #d0d9f0;
-  border-radius: 8px;
-  font-size: 13px;
-}
-
-.file-tag {
-  flex: 1;
-  color: #333;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.file-mode-select {
-  padding: 2px 8px;
-  border: 1px solid #ccc;
-  border-radius: 4px;
-  font-size: 12px;
-  background: white;
-  outline: none;
-}
-
-.file-remove-btn {
-  background: none;
-  border: none;
-  font-size: 14px;
-  color: #999;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-}
-
-.file-remove-btn:hover {
-  color: #ff3b3b;
-}
-
 .input-row {
   display: flex;
   gap: 10px;
-}
-
-.attach-btn {
-  height: 44px;
-  width: 44px;
-  background: transparent;
-  border: 1px solid #e0e0e0;
-  border-radius: 50%;
-  font-size: 18px;
-  cursor: pointer;
-  transition: all 0.2s;
-  flex-shrink: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-}
-
-.attach-btn:hover:not(:disabled) {
-  background: #f0f0f0;
-  border-color: #ccc;
-}
-
-.attach-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 .chat-input {
