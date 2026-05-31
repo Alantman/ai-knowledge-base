@@ -138,47 +138,6 @@ def ask_agent_stream(question: str, session_id: str = "default"):
 MAX_ITERATIONS = 5  # 安全阀：最多走 5 轮，防止无限循环
 
 
-def ask_agent_reasoning(question: str, session_id: str = "default"):
-    """Agent 多轮推理：while 循环让模型反复思考、调工具、观察结果，直到它觉得够了"""
-    history_messages = _get_agent_history(session_id)
-    messages = history_messages + [HumanMessage(content=question)]
-
-    iteration = 0
-    while iteration < MAX_ITERATIONS:
-        iteration += 1
-
-        ai_msg = model_with_tools.invoke(messages)
-
-        if not ai_msg.tool_calls:
-            session_hist = get_session_history(session_id)
-            session_hist.add_message(HumanMessage(content=question))
-            session_hist.add_message(ai_msg)
-            return ai_msg.content
-
-        messages.append(ai_msg)
-        for tc in ai_msg.tool_calls:
-            tool_fn = TOOL_MAP.get(tc["name"])
-            if tool_fn:
-                result = tool_fn.invoke(tc["args"])
-                messages.append(
-                    ToolMessage(content=result, tool_call_id=tc["id"])
-                )
-            else:
-                messages.append(
-                    ToolMessage(
-                        content=f"错误：未知工具 {tc['name']}",
-                        tool_call_id=tc["id"],
-                    )
-                )
-
-    messages.append(HumanMessage(content="请基于已有信息给出最终回答。"))
-    final_msg = model_with_tools.invoke(messages)
-    session_hist = get_session_history(session_id)
-    session_hist.add_message(HumanMessage(content=question))
-    session_hist.add_message(final_msg)
-    return final_msg.content
-
-
 def ask_agent_reasoning_stream(question: str, session_id: str = "default"):
     """Agent 多轮推理的流式版本 — 工具调用阶段静默，最终答案流式输出"""
     history_messages = _get_agent_history(session_id)
@@ -222,14 +181,14 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langchain_core.messages import AIMessageChunk
 
 # 用 MessagesState 管理消息列表 — LangGraph 自动帮你追加消息到 state["messages"]
-# 等价于你之前手动做的 messages.append() ... 然后传给下一轮
+# 等价于你之前手动做的 messages.append()  然后传给下一轮
 
-# ToolNode 等价于你之前手动写的：
+# ToolNode 等价于之前手动写的：
 #   for tc in ai_msg.tool_calls:
 #       result = search_knowledge_base.invoke(tc["args"])
 #       messages.append(ToolMessage(content=result, tool_call_id=tc["id"]))
 
-# tools_condition 等价于你之前手动写的：
+# tools_condition 等价于之前手动写的：
 #   if ai_msg.tool_calls: → 走工具 / else: → END
 
 
@@ -245,8 +204,8 @@ def _build_langgraph_agent():
 
     # 两个节点：agent（调 LLM） + tools（执行工具）
     graph = StateGraph(MessagesState)
-    graph.add_node("agent", call_model)
-    graph.add_node("tools", ToolNode([search_knowledge_base]))
+    graph.add_node("agent", call_model)   #调用 LLM
+    graph.add_node("tools", ToolNode([search_knowledge_base]))  # 执行工具
 
     # 边：
     #   START → agent → (conditional) → tools → agent → ... → END
@@ -262,9 +221,7 @@ langgraph_agent = _build_langgraph_agent()
 
 def ask_agent_langgraph_stream(question: str, session_id: str = "default"):
     """LangGraph Agent 流式推理：图结构自动管理循环和状态，不需要手动 while
-
-    stream_mode="messages" 让 LangGraph 产出 token 级流式事件。
-    每个事件是 (message_chunk, metadata) 的元组。
+    stream_mode="messages" token级流式输出
     """
     history_messages = _get_agent_history(session_id)
 

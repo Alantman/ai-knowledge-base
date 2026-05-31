@@ -1,8 +1,10 @@
 import os
+import httpx
 import fitz  # pymupdf
+from typing import List
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_openai import OpenAIEmbeddings
+from langchain_core.embeddings import Embeddings
 from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from config.ai_conf import (
@@ -10,10 +12,49 @@ from config.ai_conf import (
     CHUNK_SIZE, CHUNK_OVERLAP, CHROMA_DIR,
 )
 
+
+class SiliconFlowEmbeddings(Embeddings):
+    """
+    自定义硅基流动 Embedding 封装类。
+    不使用 OpenAI SDK，直接用 httpx 调硅基流动 API，
+    避免 OpenAI SDK 把中文 tokenize 成 token IDs 导致硅基流动 500 错误。
+    """
+    def __init__(self, api_key: str, base_url: str, model: str):
+        self.api_key = api_key
+        self.base_url = base_url.rstrip("/")
+        self.model = model
+        self._client = httpx.Client(timeout=60)
+
+    def embed_query(self, text: str) -> List[float]:
+        """向量化单条查询文本"""
+        return self._embed([text])[0]
+
+    def embed_documents(self, texts: List[str]) -> List[List[float]]:
+        """向量化多条文档文本"""
+        return self._embed(texts)
+
+    def _embed(self, texts: List[str]) -> List[List[float]]:
+        """调用硅基流动 Embedding API，直接发送原始文本"""
+        resp = self._client.post(
+            f"{self.base_url}/embeddings",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json",
+            },
+            json={"model": self.model, "input": texts},
+        )
+        if resp.status_code != 200:
+            raise RuntimeError(f"Embedding API error {resp.status_code}: {resp.text}")
+        data = resp.json()
+        # 按索引排序后返回 embedding 向量列表
+        sorted_items = sorted(data["data"], key=lambda x: x["index"])
+        return [item["embedding"] for item in sorted_items]
+
+
 # 全局向量库实例
 vectorstore: Chroma = None
 
-embeddings = OpenAIEmbeddings(
+embeddings = SiliconFlowEmbeddings(
     api_key=EMBEDDING_API_KEY,
     base_url=EMBEDDING_BASE_URL,
     model=EMBEDDING_MODEL,

@@ -1,6 +1,6 @@
 # AI 知识库问答系统
 
-基于 RAG + Tool Calling + Agent 的智能知识库问答系统，支持文档上传、向量检索、多模式对话和多会话管理。
+基于 RAG + Tool Calling + Agent + **LangGraph** 的智能知识库问答系统，支持文档上传、向量检索、多模式对话和多会话管理。
 
 ## 功能
 
@@ -9,12 +9,13 @@
 - 文档列表查看与删除
 - 支持中文文本最优切分
 
-### 三种对话模式
-| 模式 | 说明 |
-|------|------|
-| **RAG 模式** | 固定流程：检索知识库 → 结合文档回答 |
-| **Agent 模式** | 模型自主判断是否需要检索，无需检索时直接回答 |
-| **Agent 推理** | 多步推理循环，模型可连续调用多次工具直到找到答案 |
+### 四种对话模式
+| 模式 | 说明 | 实现方式 |
+|------|------|----------|
+| **RAG 模式** | 固定流程：检索知识库 → 结合文档回答 | LCEL 链式调用 |
+| **Agent 模式** | 模型自主判断是否需要检索，无需检索时直接回答 | `@tool` + `bind_tools` + if/else 单轮判断 |
+| **Agent 推理** | 多步推理循环，模型可连续调用多次工具直到找到答案 | `@tool` + `bind_tools` + 手写 while 循环 |
+| **LangGraph Agent** | 图结构替代手写 while，框架自动管理循环和状态 | StateGraph + ToolNode + tools_condition |
 
 ### 对话中文件分析
 - 📎 附加文件，选择「临时分析」— 文件内容直接注入 prompt，不入库
@@ -24,7 +25,7 @@
 ### 多会话管理
 - 对话列表持久化，支持新建 / 切换 / 删除会话
 - 每个会话独立 session_id，后端记忆互不干扰
-- 三种对话模式共享同一会话记忆
+- 四种对话模式共享同一会话记忆
 
 ### 流式输出
 - 所有对话端点均为 SSE 流式响应
@@ -46,18 +47,19 @@
 ```
 ai-knowledge-base/
 ├── backend/
-│   ├── main.py                     # FastAPI 入口
-│   ├── config/ai_conf.py           # 模型配置
-│   ├── routers/kb.py               # API 路由
+│   ├── main.py                      # FastAPI 入口
+│   ├── config/ai_conf.py            # 模型配置
+│   ├── routers/kb.py                # API 路由
 │   ├── services/
-│   │   ├── rag_service.py          # RAG / Tool Calling / Agent / 临时文件分析
-│   │   ├── doc_service.py          # 文档切分 / 向量化 / 检索 / 删除
-│   │   └── tools.py                # Tool Calling 工具定义
-│   ├── schemas/kb.py               # Pydantic 请求模型
-│   └── utils/response.py           # 统一响应格式
+│   │   ├── rag_service.py           # RAG / Tool Calling / Agent / LangGraph / 临时文件分析
+│   │   ├── doc_service.py           # 文档切分 / 向量化 / 检索 / 删除
+│   │   └── tools.py                 # Tool Calling 工具定义
+│   ├── agent_langgraph.py           # LangGraph 独立演示（StateGraph + ToolNode）
+│   ├── schemas/kb.py                # Pydantic 请求模型
+│   └── utils/response.py            # 统一响应格式
 ├── frontend/
-│   └── src/views/KnowledgeBase.vue  # 主界面（单文件组件）
-├── .env.example                     # 环境变量模板
+│   └── src/views/KnowledgeBase.vue   # 主界面（四模式切换 + 流式渲染）
+├── .env.example                      # 环境变量模板
 └── requirements.txt
 ```
 
@@ -108,21 +110,18 @@ npm run dev
 | POST | `/api/kb/chat` | RAG 模式流式问答 |
 | POST | `/api/kb/chat/agent` | Agent 单轮 Tool Calling 流式问答 |
 | POST | `/api/kb/chat/agent/reasoning` | Agent 多轮推理流式问答 |
+| POST | `/api/kb/chat/agent/langgraph` | LangGraph Agent 流式问答（图结构替代手动 while） |
 | POST | `/api/kb/chat/with-file` | 临时文件分析（不入库） |
 
 ### 请求示例
 
 ```json
-// POST /api/kb/chat
+
 {
   "question": "什么是 RAG？",
   "session_id": "session_123"
 }
 ```
-
-## 演示
-
-<video src="demo/demo.mp4" controls width="100%"></video>
 
 ## 截图
 
