@@ -1,9 +1,7 @@
-from operator import itemgetter
+import os
 from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.output_parsers import StrOutputParser
 from langchain_core.chat_history import BaseChatMessageHistory, InMemoryChatMessageHistory
-from langchain_core.runnables.history import RunnableWithMessageHistory
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from config.ai_conf import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
 from services.doc_service import get_retriever
 
@@ -15,25 +13,22 @@ model = ChatOpenAI(
     streaming=True,
 )
 
-# RAG 提示词：retriever 查到的文档作为 context，用户问题作为 question
-prompt = ChatPromptTemplate.from_messages([
-    ("system", "根据以下资料回答用户问题。如果资料中找不到相关信息，可以根据自己的知识和对话历史来回答。\n\n资料：{context}"),
-    MessagesPlaceholder(variable_name="history", optional=True),
-    ("user", "{question}"),
-])
+# RAG 系统提示词：要求模型基于资料回答，并在末尾注明来源
+RAG_SYSTEM_PROMPT = (
+    "根据以下资料回答用户问题。"
+    "如果资料中找不到相关信息，请直接告诉用户"知识库中未找到相关信息"，不要猜测或编造。"
+    "回答时请在末尾用 [来源: 文件名] 格式注明信息来源。\n\n"
+    "资料：\n{context}"
+)
 
-# RAG Chain：检索 → 拼 prompt → 模型 → 解析
-# 注意：必须把 history 也传下去，否则 RunnableWithMessageHistory 注入的
-# 历史消息会被 dict 构造函数丢掉
-rag_chain = (
-    {
-        "context": itemgetter("question") | get_retriever(),
-        "question": itemgetter("question"),
-        "history": itemgetter("history"),
-    }
-    | prompt
-    | model
-    | StrOutputParser()
+# 查询重写提示词：把含指代词的口语问题改写为独立检索查询
+QUERY_REWRITE_PROMPT = (
+    "将用户问题改写为一个适合文档检索的独立查询。"
+    "去除指代词（"它""那个""这个""他"），结合对话历史补充上下文。"
+    "直接输出改写后的查询文本，不要加任何解释。\n\n"
+    "对话历史：\n{history}\n\n"
+    "用户问题：{question}\n\n"
+    "改写查询："
 )
 
 # Memory 存储，按 session 隔离
@@ -46,30 +41,73 @@ def get_session_history(session_id: str) -> BaseChatMessageHistory:
     return store[session_id]
 
 
-chain_with_memory = RunnableWithMessageHistory(
-    rag_chain,
-    get_session_history,
-    input_messages_key="question",
-    history_messages_key="history",
-)
+def _format_docs(docs: list) -> str:
+    """格式化检索到的文档片段，带上来源文件名"""
+    parts = []
+    for i, doc in enumerate(docs):
+        src = doc.metadata.get("source", "unknown")
+        filename = os.path.basename(src) if src else "unknown"
+        parts.append(f"[来源{i + 1}: {filename}]\n{doc.page_content}")
+    return "\n\n".join(parts)
+
+
+def _rewrite_query(question: str, history_messages: list) -> str:
+    """用 LLM 改写查询：补全指代、去掉口语化，提升检索命中率"""
+    if not history_messages:
+        return question
+
+    # 取最近 3 轮对话作为上下文
+    history_text = "\n".join(
+        f"{'用户' if isinstance(m, HumanMessage) else 'AI'}: {m.content[:200]}"
+        for m in history_messages[-6:]
+    )
+
+    try:
+        response = model.invoke(
+            QUERY_REWRITE_PROMPT.format(history=history_text, question=question)
+        )
+        rewritten = response.content.strip()
+        if rewritten and len(rewritten) > 1:
+            return rewritten
+    except Exception:
+        pass
+
+    return question
 
 
 def ask_stream(question: str, session_id: str = "default"):
-    """流式问答，逐 chunk yield。手动管理历史以解决 RunnableWithMessageHistory 的缓冲问题。"""
-    from langchain_core.messages import HumanMessage, AIMessage
-
+    """RAG 流式问答：查询重写 → Chroma 检索 → 来源标注 → 流式输出"""
     history = get_session_history(session_id)
-    history_messages = history.messages
+    history_messages = list(history.messages)
 
+    # 1. 查询重写
+    rewritten = _rewrite_query(question, history_messages)
+    if rewritten != question:
+        print(f"[查询重写] {question[:60]}  →  {rewritten[:80]}")
+
+    # 2. 检索
+    retriever = get_retriever()
+    docs = retriever.invoke(rewritten)
+    context = _format_docs(docs)
+
+    print(f"[检索] 命中 {len(docs)} 个片段 (k=3):")
+    for i, doc in enumerate(docs):
+        src = doc.metadata.get("source", "?")
+        preview = doc.page_content[:80].replace("\n", " ")
+        print(f"  [{i+1}] {os.path.basename(src)} → {preview}...")
+
+    # 3. 构建消息
+    system_msg = SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context))
+    messages = [system_msg] + history_messages + [HumanMessage(content=question)]
+
+    # 4. 流式输出
     full_answer = ""
-    for chunk in rag_chain.stream({
-        "question": question,
-        "history": history_messages,
-    }):
-        full_answer += chunk
-        yield chunk
+    for chunk in model.stream(messages):
+        if chunk.content:
+            full_answer += chunk.content
+            yield chunk.content
 
-    # 存入历史（和 RunnableWithMessageHistory 一样的逻辑）
+    # 5. 存入历史
     history.add_message(HumanMessage(content=question))
     history.add_message(AIMessage(content=full_answer))
 
@@ -78,15 +116,16 @@ def ask_stream(question: str, session_id: str = "default"):
 # Tool Calling（单轮）：模型自主决定是否搜索知识库
 # ============================================================
 
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
-from services.tools import search_knowledge_base
+from langchain_core.messages import ToolMessage
+from services.tools import search_knowledge_base, list_knowledge_base_documents
 
 # 工具名 → 函数 映射表，Agent 循环用
 TOOL_MAP = {
     "search_knowledge_base": search_knowledge_base,
+    "list_knowledge_base_documents": list_knowledge_base_documents,
 }
-
-model_with_tools = model.bind_tools([search_knowledge_base])
+tools=[search_knowledge_base, list_knowledge_base_documents]
+model_with_tools = model.bind_tools(tools)   
 
 
 def _get_agent_history(session_id: str) -> list:
@@ -192,7 +231,7 @@ from langchain_core.messages import AIMessageChunk
 #   if ai_msg.tool_calls: → 走工具 / else: → END
 
 
-def _build_langgraph_agent():
+def _build_langgraph_agent(): 
     """构建 LangGraph Agent，用图替代 while 循环"""
 
     def call_model(state: MessagesState):
@@ -205,7 +244,7 @@ def _build_langgraph_agent():
     # 两个节点：agent（调 LLM） + tools（执行工具）
     graph = StateGraph(MessagesState)
     graph.add_node("agent", call_model)   #调用 LLM
-    graph.add_node("tools", ToolNode([search_knowledge_base]))  # 执行工具
+    graph.add_node("tools", ToolNode([search_knowledge_base, list_knowledge_base_documents]))  # 执行工具
 
     # 边：
     #   START → agent → (conditional) → tools → agent → ... → END

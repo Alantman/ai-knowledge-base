@@ -15,7 +15,7 @@ EMBEDDING_API_KEY = os.getenv("EMBEDDING_API_KEY")
 EMBEDDING_BASE_URL = os.getenv("EMBEDDING_BASE_URL", "https://api.siliconflow.cn/v1")
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "BAAI/bge-large-zh-v1.5")
 
-# Chroma 向量库持久化路径
+# Chroma 向量库路径
 CHROMA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "chroma_db")
 
 # 文档切分配置
