@@ -16,7 +16,7 @@ model = ChatOpenAI(
 # RAG 系统提示词：要求模型基于资料回答，并在末尾注明来源
 RAG_SYSTEM_PROMPT = (
     "根据以下资料回答用户问题。"
-    "如果资料中找不到相关信息，请直接告诉用户"知识库中未找到相关信息"，不要猜测或编造。"
+    "如果资料中找不到相关信息，请直接告诉用户知识库中未找到相关信息，不要猜测或编造。"
     "回答时请在末尾用 [来源: 文件名] 格式注明信息来源。\n\n"
     "资料：\n{context}"
 )
@@ -24,11 +24,18 @@ RAG_SYSTEM_PROMPT = (
 # 查询重写提示词：把含指代词的口语问题改写为独立检索查询
 QUERY_REWRITE_PROMPT = (
     "将用户问题改写为一个适合文档检索的独立查询。"
-    "去除指代词（"它""那个""这个""他"），结合对话历史补充上下文。"
+    "去除指代词（它、那个、这个、他），结合对话历史补充上下文。"
     "直接输出改写后的查询文本，不要加任何解释。\n\n"
     "对话历史：\n{history}\n\n"
     "用户问题：{question}\n\n"
     "改写查询："
+)
+
+# Agent 系统提示词：要求模型基于工具返回的资料回答，并注明来源
+AGENT_SYSTEM_PROMPT = (
+    "你是一个知识库问答助手。你可以使用工具搜索知识库中的文档来回答问题。"
+    "当使用搜索工具获取资料后，请在回答末尾用 [来源: 文件名] 格式注明信息来源。"
+    "如果知识库中找不到相关信息，请直接告诉用户，不要猜测或编造。"
 )
 
 # Memory 存储，按 session 隔离
@@ -137,7 +144,7 @@ def _get_agent_history(session_id: str) -> list:
 def ask_agent_stream(question: str, session_id: str = "default"):
     """流式问答，单轮 Tool Calling：模型决定是否调工具，最多一轮"""
     history_messages = _get_agent_history(session_id)
-    current_messages = history_messages + [HumanMessage(content=question)]
+    current_messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT)] + history_messages + [HumanMessage(content=question)]
 
     ai_msg = model_with_tools.invoke(current_messages)
 
@@ -180,7 +187,7 @@ MAX_ITERATIONS = 5  # 安全阀：最多走 5 轮，防止无限循环
 def ask_agent_reasoning_stream(question: str, session_id: str = "default"):
     """Agent 多轮推理的流式版本 — 工具调用阶段静默，最终答案流式输出"""
     history_messages = _get_agent_history(session_id)
-    messages = history_messages + [HumanMessage(content=question)]
+    messages = [SystemMessage(content=AGENT_SYSTEM_PROMPT)] + history_messages + [HumanMessage(content=question)]
 
     iteration = 0
     while iteration < MAX_ITERATIONS:
@@ -266,7 +273,7 @@ def ask_agent_langgraph_stream(question: str, session_id: str = "default"):
 
     full_answer = ""
     for chunk, metadata in langgraph_agent.stream(
-        {"messages": history_messages + [HumanMessage(content=question)]},
+        {"messages": [SystemMessage(content=AGENT_SYSTEM_PROMPT)] + history_messages + [HumanMessage(content=question)]},
         config={"recursion_limit": 5},
         stream_mode="messages",
     ):

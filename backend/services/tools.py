@@ -11,7 +11,8 @@ def search_knowledge_base(query: str) -> str:
     if not docs:
         return "知识库中未找到相关信息。"
     return "\n\n".join(
-        f"[来源{i + 1}]\n{d.page_content}" for i, d in enumerate(docs)
+        f"[来源{i + 1}: {os.path.basename(d.metadata.get('source', 'unknown'))}]\n{d.page_content}"
+        for i, d in enumerate(docs)
     )
 
 
