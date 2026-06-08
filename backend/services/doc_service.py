@@ -10,6 +10,7 @@ from langchain_core.documents import Document
 from config.ai_conf import (
     EMBEDDING_API_KEY, EMBEDDING_BASE_URL, EMBEDDING_MODEL,
     CHUNK_SIZE, CHUNK_OVERLAP, CHROMA_DIR,
+    RETRIEVER_K, RETRIEVER_FETCH_K,
 )
 
 
@@ -115,7 +116,10 @@ def get_retriever():
             embedding_function=embeddings,
             persist_directory=CHROMA_DIR,
         )
-    return vectorstore.as_retriever(search_kwargs={"k": 3})
+    return vectorstore.as_retriever(
+        search_type="mmr",
+        search_kwargs={"k": RETRIEVER_K, "fetch_k": RETRIEVER_FETCH_K},
+    )
 
 
 def delete_document(file_path: str):

@@ -97,7 +97,7 @@ def ask_stream(question: str, session_id: str = "default"):
     docs = retriever.invoke(rewritten)
     context = _format_docs(docs)
 
-    print(f"[检索] 命中 {len(docs)} 个片段 (k=3):")
+    print(f"[检索] 命中 {len(docs)} 个片段 (k=6, MMR):")
     for i, doc in enumerate(docs):
         src = doc.metadata.get("source", "?")
         preview = doc.page_content[:80].replace("\n", " ")

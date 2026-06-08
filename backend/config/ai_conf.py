@@ -20,7 +20,8 @@ CHROMA_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file
 
 # 文档切分配置
 CHUNK_SIZE = 500
-CHUNK_OVERLAP = 50
+CHUNK_OVERLAP = 100
 
 # 检索配置
-RETRIEVER_K = 3
+RETRIEVER_K = 6
+RETRIEVER_FETCH_K = 12  # MMR 初选候选数，需大于 k
