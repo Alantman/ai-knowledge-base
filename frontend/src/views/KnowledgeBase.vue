@@ -117,7 +117,8 @@
 import { ref, nextTick, onMounted, watch } from 'vue'
 import axios from 'axios'
 
-const API_BASE = 'http://127.0.0.1:8010'
+// 统一用相对路径：开发时 Vite 代理转发，Docker 时 nginx 代理转发
+const API_BASE = ''
 
 const ENDPOINTS = {
   rag: '/api/kb/chat',

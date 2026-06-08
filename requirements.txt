@@ -8,3 +8,4 @@ langgraph>=1.0
 python-dotenv>=1.2
 pymupdf>=1.27
 python-multipart>=0.0.29
+httpx>=0.28

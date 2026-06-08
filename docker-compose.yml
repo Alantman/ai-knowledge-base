@@ -1,0 +1,32 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    container_name: kb-backend
+    ports:
+      - "8010:8010"
+    volumes:
+      - ./.env:/app/.env:ro              # API key 等敏感配置
+      - ./chroma_db:/app/chroma_db        # Chroma 向量库持久化
+      - ./uploads:/app/uploads            # 上传的文档持久化
+    restart: unless-stopped
+    networks:
+      - kb-network
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+    container_name: kb-frontend
+    ports:
+      - "5173:80"                          # 外部 5173 → nginx 80
+    depends_on:
+      - backend
+    restart: unless-stopped
+    networks:
+      - kb-network
+
+networks:
+  kb-network:
+    driver: bridge

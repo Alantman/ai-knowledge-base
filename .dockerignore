@@ -1,0 +1,27 @@
+# Python
+.venv
+__pycache__
+*.pyc
+
+# Node
+frontend/node_modules
+frontend/dist
+
+# IDE
+.idea
+.vscode
+
+# Git
+.git
+.gitignore
+
+# Docker
+Dockerfile.*
+docker-compose.yml
+.dockerignore
+
+# Chroma 数据（运行时挂载，不打包进镜像）
+chroma_db
+
+# 上传文件（运行时挂载，不打包进镜像）
+uploads
