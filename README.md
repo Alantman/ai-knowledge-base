@@ -12,7 +12,7 @@
 ### 四种对话模式
 | 模式 | 说明 | 实现方式 |
 |------|------|----------|
-| **RAG 模式** | 固定流程：检索知识库 → 结合文档回答 | LCEL 链式调用 |
+| **RAG 模式** | 固定流程：查询重写 → MMR 检索 → 拼接上下文 → 流式生成 | 手动分步（检索前先改写查询，用 MMR 去重） |
 | **Agent 模式** | 模型自主判断是否需要检索，无需检索时直接回答 | `@tool` + `bind_tools` + if/else 单轮判断 |
 | **Agent 推理** | 多步推理循环，模型可连续调用多次工具直到找到答案 | `@tool` + `bind_tools` + 手写 while 循环 |
 | **LangGraph Agent** | 图结构替代手写 while，框架自动管理循环和状态 | StateGraph + ToolNode + tools_condition |
@@ -25,6 +25,11 @@
 ### 流式输出
 - 所有对话端点均为 SSE 流式响应
 - 前端 ReadableStream 逐字渲染
+
+### 检索优化
+- **查询重写**：检索前用 LLM 结合对话历史改写查询，把"它怎么用"补全为独立查询，提升命中率
+- **MMR 检索**：最大边际相关性算法，fetch_k=12 候选 → k=6 精选，保证既相关又不重复
+- **来源引用**：System Prompt 要求模型注明 `[来源: 文件名]`，工具返回结果带来源标注，答案可追溯
 
 ## 技术栈
 
@@ -46,10 +51,10 @@ ai-knowledge-base/
 │   ├── config/ai_conf.py            # 模型配置
 │   ├── routers/kb.py                # API 路由
 │   ├── services/
-│   │   ├── rag_service.py           # RAG / Tool Calling / Agent / LangGraph / 临时文件分析
+│   │   ├── rag_service.py           # RAG / Tool Calling / Agent / LangGraph
 │   │   ├── doc_service.py           # 文档切分 / 向量化 / 检索 / 删除
 │   │   └── tools.py                 # Tool Calling 工具定义
-│   ├── agent_langgraph.py           # LangGraph 独立演示（StateGraph + ToolNode）
+│   ├── langgraph独立演示.py          # LangGraph 独立演示（StateGraph + ToolNode）
 │   ├── schemas/kb.py                # Pydantic 请求模型
 │   └── utils/response.py            # 统一响应格式
 ├── frontend/
