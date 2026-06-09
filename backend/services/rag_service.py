@@ -103,7 +103,7 @@ def ask_stream(question: str, session_id: str = "default"):
         preview = doc.page_content[:80].replace("\n", " ")
         print(f"  [{i+1}] {os.path.basename(src)} → {preview}...")
 
-    # 3. 构建消息
+    # 3. 拼接消息
     system_msg = SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context))
     messages = [system_msg] + history_messages + [HumanMessage(content=question)]
 
