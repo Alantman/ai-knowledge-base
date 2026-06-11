@@ -117,7 +117,7 @@
 import { ref, nextTick, onMounted, watch } from 'vue'
 import axios from 'axios'
 
-// 统一用相对路径：开发时 Vite 代理转发，Docker 时 nginx 代理转发
+// 统一用相对路径：开发时 Vite 代理转发
 const API_BASE = ''
 
 const ENDPOINTS = {
