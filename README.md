@@ -46,6 +46,8 @@
 
 ```
 ai-knowledge-base/
+├── start.py                          # 一键启动脚本
+├── run_tests.py                      # 测试运行脚本
 ├── backend/
 │   ├── main.py                      # FastAPI 入口
 │   ├── config/ai_conf.py            # 模型配置
@@ -54,6 +56,8 @@ ai-knowledge-base/
 │   │   ├── rag_service.py           # RAG / Tool Calling / Agent / LangGraph
 │   │   ├── doc_service.py           # 文档切分 / 向量化 / 检索 / 删除
 │   │   └── tools.py                 # Tool Calling 工具定义
+│   ├── tests/
+│   │   └── test_rag_service.py      # 单元测试（15 个用例）
 │   ├── langgraph独立演示.py          # LangGraph 独立演示（StateGraph + ToolNode）
 │   ├── schemas/kb.py                # Pydantic 请求模型
 │   └── utils/response.py            # 统一响应格式
@@ -64,6 +68,16 @@ ai-knowledge-base/
 ```
 
 ## 本地运行
+
+### 1. 一键启动（推荐）
+
+```bash
+python start.py
+```
+
+自动启动后端 + 前端，浏览器打开后直接使用。在运行窗口按回车停止。
+
+### 2. 手动启动
 
 ### 1. 环境准备
 
@@ -124,3 +138,11 @@ npm run dev
 ## 截图
 
 ![主界面](screenshots/chat.png)
+
+## 测试
+
+```bash
+python run_tests.py       # 右键直接运行也可
+```
+
+覆盖：来源格式化、Session 隔离、查询重写、检索意图判断、工具调用等核心模块。
