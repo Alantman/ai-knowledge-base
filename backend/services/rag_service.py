@@ -31,6 +31,18 @@ QUERY_REWRITE_PROMPT = (
     "改写查询："
 )
 
+# 检索意图判断提示词：区分知识查询和闲聊/问候/自我介绍
+NEED_RETRIEVAL_PROMPT = (
+    "判断用户问题是否需要查询知识库文档来回答。"
+    "需要检索：询问文档内容、专业知识、事实性信息、数据查询等问题。"
+    "不需要检索：闲聊、自我介绍、问候、感谢、道别、简单确认等社交性对话。"
+    "只回复'需要'或'不需要'，不要加任何解释。\n\n"
+    "问题：{question}\n\n回答："
+)
+
+# 通用对话提示词（不需要检索时使用）
+GENERAL_SYSTEM_PROMPT = "你是一个友好的AI助手，可以回答各种问题。"
+
 # Agent 系统提示词：要求模型基于工具返回的资料回答，并注明来源
 AGENT_SYSTEM_PROMPT = (
     "你是一个知识库问答助手。你可以使用工具搜索知识库中的文档来回答问题。"
@@ -83,7 +95,7 @@ def _rewrite_query(question: str, history_messages: list) -> str:
 
 
 def ask_stream(question: str, session_id: str = "default"):
-    """RAG 流式问答：查询重写 → Chroma 检索 → 来源标注 → 流式输出"""
+    """RAG 流式问答：查询重写 → 检索意图判断 → 按需检索 → 流式输出"""
     history = get_session_history(session_id)
     history_messages = list(history.messages)
 
@@ -92,22 +104,33 @@ def ask_stream(question: str, session_id: str = "default"):
     if rewritten != question:
         print(f"[查询重写] {question[:60]}  →  {rewritten[:80]}")
 
-    # 2. 检索
-    retriever = get_retriever()
-    docs = retriever.invoke(rewritten)
-    context = _format_docs(docs)
+    # 2. 检索意图判断：闲聊/问候/自我介绍 → 跳过检索
+    need_retrieval = True
+    try:
+        check_result = model.invoke(NEED_RETRIEVAL_PROMPT.format(question=rewritten))
+        need_retrieval = "不需要" not in check_result.content
+        print(f"[检索意图] {rewritten[:60]}... → {'需要检索' if need_retrieval else '无需检索'}")
+    except Exception:
+        pass  # 判断失败默认走检索
 
-    print(f"[检索] 命中 {len(docs)} 个片段 (k=6, MMR):")
-    for i, doc in enumerate(docs):
-        src = doc.metadata.get("source", "?")
-        preview = doc.page_content[:80].replace("\n", " ")
-        print(f"  [{i+1}] {os.path.basename(src)} → {preview}...")
+    # 3. 检索（按需）
+    if need_retrieval:
+        retriever = get_retriever()
+        docs = retriever.invoke(rewritten)
+        context = _format_docs(docs)
+        print(f"[检索] 命中 {len(docs)} 个片段 (k=6, MMR):")
+        for i, doc in enumerate(docs):
+            src = doc.metadata.get("source", "?")
+            preview = doc.page_content[:80].replace("\n", " ")
+            print(f"  [{i+1}] {os.path.basename(src)} → {preview}...")
+        system_msg = SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context))
+    else:
+        system_msg = SystemMessage(content=GENERAL_SYSTEM_PROMPT)
 
-    # 3. 拼接消息
-    system_msg = SystemMessage(content=RAG_SYSTEM_PROMPT.format(context=context))
+    # 4. 拼接消息
     messages = [system_msg] + history_messages + [HumanMessage(content=question)]
 
-    # 4. 流式输出
+    # 5. 流式输出
     full_answer = ""
     for chunk in model.stream(messages):
         if chunk.content:
