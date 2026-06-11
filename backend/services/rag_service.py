@@ -245,10 +245,6 @@ def ask_agent_reasoning_stream(question: str, session_id: str = "default"):
 # Agent（LangGraph）：用图结构替代手动 while 循环
 # ============================================================
 
-from langgraph.graph import StateGraph, MessagesState, END
-from langgraph.prebuilt import ToolNode, tools_condition
-from langchain_core.messages import AIMessageChunk
-
 # 用 MessagesState 管理消息列表 — LangGraph 自动帮你追加消息到 state["messages"]
 # 等价于你之前手动做的 messages.append()  然后传给下一轮
 
@@ -261,8 +257,10 @@ from langchain_core.messages import AIMessageChunk
 #   if ai_msg.tool_calls: → 走工具 / else: → END
 
 
-def _build_langgraph_agent(): 
-    """构建 LangGraph Agent，用图替代 while 循环"""
+def _build_langgraph_agent():
+    """构建 LangGraph Agent，用图替代 while 循环（langgraph 懒加载）"""
+    from langgraph.graph import StateGraph, MessagesState
+    from langgraph.prebuilt import ToolNode, tools_condition
 
     def call_model(state: MessagesState):
         """agent 节点：调用 LLM。state["messages"] 是历史消息列表"""
@@ -285,17 +283,28 @@ def _build_langgraph_agent():
     return graph.compile()
 
 
-langgraph_agent = _build_langgraph_agent()
+langgraph_agent = None
+
+
+def _get_langgraph_agent():
+    """懒加载 LangGraph Agent（首次调用时才真正 import langgraph）"""
+    global langgraph_agent
+    if langgraph_agent is None:
+        langgraph_agent = _build_langgraph_agent()
+    return langgraph_agent
 
 
 def ask_agent_langgraph_stream(question: str, session_id: str = "default"):
     """LangGraph Agent 流式推理：图结构自动管理循环和状态，不需要手动 while
     stream_mode="messages" token级流式输出
     """
+    from langchain_core.messages import AIMessageChunk
+
     history_messages = _get_agent_history(session_id)
 
+    agent = _get_langgraph_agent()
     full_answer = ""
-    for chunk, metadata in langgraph_agent.stream(
+    for chunk, metadata in agent.stream(
         {"messages": [SystemMessage(content=AGENT_SYSTEM_PROMPT)] + history_messages + [HumanMessage(content=question)]},
         config={"recursion_limit": 5},
         stream_mode="messages",
